@@ -794,7 +794,34 @@ shell).
 | 12 | Invalid config handling | `FLOCHAT_MODE=chaos flochat status` | **Pass** — `failure` state, message names the field and allowed values, exit code 2, no traceback |
 | 13 | Repository orientation | `python scripts/check_repository.py` | **Pass** — allow-listed top level, no extra Markdown, no placeholders, no empty folders |
 | 14 | Secret exposure | Same guard; patterns for Google access/refresh tokens, `GOCSPX-` client secrets, `AIza` API keys, private-key blocks across all text files | **Pass** — zero matches |
-| 15 | Git cleanliness | `git status --ignored` review | **Pass** — only intended files tracked; `.venv`, caches, local databases ignored |
+| 15 | Boundary behaviour suite | 40 assertions executed in-process (see below) | **Pass** — 40/40 |
+| 16 | Fresh-clone build | `git clone` → `pip install -e .` → `ruff check .` → guard script | **Pass** — installs, lints, and passes the guard with no leftovers |
+| 17 | Git cleanliness | `git status --porcelain --ignored` review | **Pass** — only intended files tracked; `.venv`, caches, `*.egg-info`, local databases ignored |
+
+**Boundary behaviour suite (check 15).** Executed directly with the interpreter rather than
+through a test framework, because Phase 01 has no test directory. All 40 assertions passed:
+
+* Confirmation rule: `StatusReport.of(SUCCESS)` is not `ok`; confirmed success is `ok`; all ten
+  states exist; terminal and user-action classifications are correct.
+* Comment safety: handles normalise and validate; zero-width characters are stripped; empty and
+  over-length comments are rejected while a 200-character comment is accepted; an unapproved
+  submission raises `ApprovalRequiredError`; `submit()` raises `NotSupportedYetError` naming
+  Phase 04.
+* Configuration: credential fields, relative paths, and unknown keys are each refused with a
+  precise message; `FLOCHAT_HOME` relocates both the database and `config.json`.
+* Storage: schema version 1, `integrity: ok`, `comment_history` present with zero rows, and a
+  database written by a newer schema version is refused.
+* Lifecycle: manual start/stop succeed and stop is idempotent; an interruption is non-terminal;
+  persistent start and recovery report `permission_required`; manual recovery reports `pending`
+  and never resubmits.
+* Boundaries: OAuth reports not configured, the API client reports `pending`, live chat reports
+  `live_chat_unavailable`, and quota/authorization codes map to the intended states.
+* Adapters: four adapters described, none claiming implementation or overlay capability, and the
+  matching adapter is selected for this platform.
+
+Also verified during this phase: an uncreatable data directory yields a `StorageError` state
+instead of a traceback, and malformed JSON plus a credential field in `config.json` are each
+refused with a clear message and exit code 2.
 
 ### What was **not** verified (stated honestly)
 
@@ -895,7 +922,7 @@ an explicit list of avoided visual clichés. No visual interface was built in Ph
 
 ### 9. Verification performed and actual results
 
-Fifteen checks executed, all passing, in a Linux x86_64 sandbox — see
+Seventeen checks executed, all passing, in a Linux x86_64 sandbox — see
 [Verification Results](#verification-results) for the table and for the explicit list of things
 that were **not** verified. Summary: lint and formatting clean; every module parses; the package
 installs and runs; all six commands exercise successfully; the database schema is created and
