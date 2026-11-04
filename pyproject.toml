@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "flochat"
+version = "0.1.0"
+description = "FloChat - Your Live Chat, Always Within Reach."
+readme = "README.md"
+requires-python = ">=3.10"
+# Phase 01 dependency policy: only what the foundation genuinely needs.
+# Typer is deliberately deferred to Phase 02 (CLI & Installation) so that
+# Phase 01 can be verified with the standard library argument parser.
+dependencies = ["pydantic>=2.6,<3"]
+
+[project.optional-dependencies]
+dev = ["ruff>=0.6"]
+
+[project.scripts]
+flochat = "flochat.cli:main"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+src = ["src"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["flochat"]
