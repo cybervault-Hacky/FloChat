@@ -38,37 +38,18 @@ class StorageError(FloChatError):
     """The local database boundary could not complete an operation."""
 
 
-class OrientationError(FloChatError):
-    """The repository contradicts the approved Phase 01 architecture."""
-
-
-class AuthenticationRequiredError(FloChatError):
-    state = AppState.AUTHENTICATION_REQUIRED
-
-
-class SessionExpiredError(FloChatError):
-    state = AppState.SESSION_EXPIRED
-
-
-class PermissionRequiredError(FloChatError):
-    state = AppState.PERMISSION_REQUIRED
-
-
 class ApprovalRequiredError(FloChatError):
-    """A submission was attempted without explicit user approval."""
+    """A submission was attempted without explicit user approval.
+
+    Phase 01 ships the guard, not the approval flow: the flow itself is Phase 05.
+    """
+
+    state = AppState.PENDING
 
     def __init__(
         self, message: str = "Explicit approval is required for every submission."
     ) -> None:
-        super().__init__(message, hint="Run the verify command only after the user approves.")
-
-
-class LiveChatUnavailableError(FloChatError):
-    state = AppState.LIVE_CHAT_UNAVAILABLE
-
-
-class NetworkInterruption(FloChatError):
-    state = AppState.TEMPORARY_INTERRUPTION
+        super().__init__(message, hint="Approve the prepared comment before it can be sent.")
 
 
 class NotSupportedYetError(FloChatError):

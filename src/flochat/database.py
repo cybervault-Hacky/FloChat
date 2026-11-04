@@ -18,7 +18,6 @@ Deliberate choices:
 from __future__ import annotations
 
 import sqlite3
-from datetime import datetime, timezone
 from pathlib import Path
 
 from flochat.errors import StorageError
@@ -44,11 +43,6 @@ CREATE TABLE IF NOT EXISTS comment_history (
 CREATE INDEX IF NOT EXISTS idx_comment_history_chat
     ON comment_history (live_chat_id, submitted_at);
 """
-
-
-def utc_now() -> str:
-    """Timestamp format used by the schema: UTC, second precision, ISO 8601."""
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
 
 class Database:

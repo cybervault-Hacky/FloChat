@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import os
 import platform
-import shutil
 import sqlite3
 import sys
 from dataclasses import dataclass
@@ -34,12 +33,6 @@ class PlatformKey(str, Enum):
 MIN_SQLITE = (3, 35, 0)
 
 
-class InterfaceKind(str, Enum):
-    """How the user is currently able to reach FloChat."""
-
-    TERMINAL = "terminal"
-
-
 @dataclass(frozen=True)
 class Capabilities:
     """Capabilities that Phase 01 can state truthfully.
@@ -54,24 +47,6 @@ class Capabilities:
 
     def to_dict(self) -> dict[str, bool]:
         return {"overlay": self.overlay, "secure_storage": self.secure_storage}
-
-
-#: Terminal emulators known to exist on each platform. Presence is a hint, not proof.
-KNOWN_TERMINALS: dict[PlatformKey, tuple[str, ...]] = {
-    PlatformKey.ANDROID: ("termux", "com.termux", "termux-app"),
-    PlatformKey.WINDOWS: ("windows terminal", "windowsterminal", "wt.exe", "conhost"),
-    PlatformKey.LINUX: (
-        "gnome-terminal",
-        "konsole",
-        "xterm",
-        "alacritty",
-        "kitty",
-        "foot",
-        "tilix",
-    ),
-    PlatformKey.MACOS: ("apple_terminal", "iterm", "terminal.app", "ghostty", "warp"),
-    PlatformKey.UNKNOWN: (),
-}
 
 
 def _detect_platform() -> PlatformKey:
@@ -159,9 +134,6 @@ class PlatformInfo:
     @property
     def label(self) -> str:
         return self.key.value
-
-    def has_terminal(self, name: str) -> bool:
-        return shutil.which(name) is not None
 
     def default_data_dir(self) -> Path:
         return _default_data_dir(self.key)

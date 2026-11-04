@@ -21,7 +21,7 @@ from flochat.errors import FloChatError
 from flochat.lifecycle import SessionManager, describe_mode
 from flochat.platform import PlatformInfo, detect
 from flochat.state import AppState, StatusReport
-from flochat.youtube import OAuthBoundary
+from flochat.youtube import describe as describe_youtube
 
 
 @dataclass
@@ -51,7 +51,7 @@ class Controller:
     def status_report(self) -> dict[str, object]:
         """Status built from real observations, not from assumed capabilities."""
         adapter = current_adapter(self.platform)
-        auth = OAuthBoundary(self.config.client_secret, self.config.token_file).status()
+        youtube = describe_youtube(self.config.client_secret, self.config.token_file)
         database = self._database_check()
         return {
             "flochat": self.version_report(),
@@ -59,7 +59,7 @@ class Controller:
             "adapter": adapter.report(self.platform).to_dict() if adapter else None,
             "config": self.config.to_public_dict(platform=self.platform),
             "session": self.sessions.session.to_dict(),
-            "authentication": auth.to_report().to_dict(),
+            "youtube": youtube,
             "database": database,
             "implemented_operations": [
                 "version",

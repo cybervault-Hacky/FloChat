@@ -238,6 +238,43 @@ def _check_readme(root: Path, result: Result) -> None:
     result.checks.append(f"README sections checked: {len(REQUIRED_README_SECTIONS)}")
 
 
+def _check_dead_code(root: Path, result: Result) -> None:
+    """Fail on definitions nothing references.
+
+    Phase 01 rules forbid placeholder code written only to represent a planned
+    feature. A name referenced exactly once (its own definition) is dead code.
+    """
+    import ast
+
+    files = [p for p in _tracked_files(root) if p.suffix == ".py"]
+    combined = "\n".join(path.read_text(encoding="utf-8") for path in files)
+    defined: dict[str, Path] = {}
+    for path in files:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in tree.body:
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                defined.setdefault(node.name, path)
+            elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+                defined.setdefault(node.target.id, path)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ClassDef):
+                for item in node.body:
+                    if isinstance(
+                        item, (ast.FunctionDef, ast.AsyncFunctionDef)
+                    ) and not item.name.startswith("__"):
+                        defined.setdefault(item.name, path)
+    #: Entry points are invoked by the interpreter or console script, not by our code.
+    exempt = {"main", "run", "build_parser"}
+    for name, path in sorted(defined.items()):
+        if name in exempt or name.startswith("_"):
+            continue
+        if len(re.findall(rf"\b{re.escape(name)}\b", combined)) <= 1:
+            result.violations.append(
+                f"Dead code: {name} in {path.relative_to(root)} is never referenced"
+            )
+    result.checks.append(f"dead code scan completed over {len(defined)} definitions")
+
+
 def _check_python_syntax(root: Path, result: Result) -> None:
     import ast
 
@@ -255,6 +292,7 @@ def check(root: Path = ROOT) -> Result:
     _check_placeholders(root, result)
     _check_required_files(root, result)
     _check_secrets(root, result)
+    _check_dead_code(root, result)
     _check_readme(root, result)
     _check_python_syntax(root, result)
     return result

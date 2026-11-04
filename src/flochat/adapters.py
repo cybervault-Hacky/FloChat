@@ -17,7 +17,6 @@ from dataclasses import dataclass, field
 from enum import Enum
 
 from flochat.platform import Capabilities, PlatformInfo, PlatformKey
-from flochat.state import AppState, StatusReport
 
 
 class AdapterState(str, Enum):
@@ -62,14 +61,6 @@ class PlatformAdapter(ABC):
     @abstractmethod
     def report(self, info: PlatformInfo) -> AdapterReport:
         """Describe the adapter's real state for the running environment."""
-
-    def ensure_available(self) -> StatusReport:
-        """Used by future overlay code to fail clearly instead of silently doing nothing."""
-        return StatusReport(
-            state=AppState.UNSUPPORTED_PLATFORM,
-            detail=f"The {self.name} overlay adapter is not implemented in Phase 01.",
-            notes=tuple(self.requirements),
-        )
 
 
 class BaseAdapter(PlatformAdapter):

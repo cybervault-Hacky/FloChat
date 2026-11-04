@@ -225,10 +225,12 @@ in this file.
 ### CLI — `src/flochat/cli.py` (implemented)
 
 * Entry point for the `flochat` console script and `python -m flochat.cli`.
-* Commands: `version`, `status`, `platform`, `config show`, `config validate`, `start`, `stop`.
+* Commands: `version`, `status`, `state`, `platform`, `start`, `stop` (6 top-level), plus
+  `config show` and `config validate` (2 actions) — verified against the built parser.
 * `--json` emits a stable machine-readable envelope for scripts and future interfaces.
 * Exit codes: `0` success, `1` failure/pending, `2` invalid usage or configuration,
-  `3` unsupported platform or required permission.
+  `3` unsupported platform or required permission. `state_exit_code()` is the single source
+  of truth for that mapping, so the documented table cannot drift from real behaviour.
 * Does not implement behaviour; delegates to the controller.
 
 ### Controller — `src/flochat/controller.py` (implemented)
@@ -238,6 +240,7 @@ in this file.
 * Performs a real database open/verify/close cycle during `status` so the reported health is
   observed, not assumed.
 * Maps persistent mode to `permission_required` with the adapter's actual permission list.
+* Asks all four YouTube boundaries for their state, so none of them is an unexercised stub.
 
 ### Configuration — `src/flochat/config.py` (implemented)
 
@@ -256,32 +259,35 @@ in this file.
 * `StatusReport` carries state, detail, notes, and a `confirmed` flag. `ok` is true **only**
   when the state is success **and** the result was confirmed — the project rule against
   reporting unverified success is enforced in the type, not in prose.
+* `flochat state` prints the whole vocabulary with its exit code, so the states are
+  inspectable rather than only documented.
 
 ### Lifecycle — `src/flochat/lifecycle.py` (implemented for manual mode)
 
-* `SessionManager` owns the current session: `start`, `stop`, `note_interruption`, `recover`.
+* `SessionManager` owns the current session: `start`, `stop`, `recover`.
 * Manual mode is a real, working session object scoped to the terminal process.
 * Persistent mode reports `permission_required` and lists what is missing; it never claims
   background availability.
 * `recover()` never restores a session and never resubmits anything; it explains what the user
   must do next.
 
-### Comment manager — `src/flochat/comments.py` (boundary + safe validation)
+### Comment manager — `src/flochat/comments.py` (safety boundary)
 
 * `normalize_text()` strips invisible/bidirectional control characters and collapses accidental
   whitespace, so the previewed string is exactly the submitted string.
-* `normalize_handle()` / `is_valid_handle()` validate YouTube-style handles (`@` plus 3–30
-  characters from letters, digits, `.`, `-`, `_`).
 * `validate_comment()` reports empty text, length overflow, unsupported control characters, and
   excessive blank lines. A clean result is a local check only — YouTube can still refuse.
-* `ensure_approved()` raises if approval is not explicitly `True`. Every future submission path
-  must call it.
-* `submit()` is not implemented and raises `NotSupportedYetError` naming Phase 04. It refuses
-  to pretend.
+* `ensure_approved()` accepts only the literal `True`; `1`, `"yes"`, and other truthy values are
+  refused, because a truthy non-boolean is not consent.
+* `submit()` is the **single** submission entry point, and in Phase 01 it refuses every call. Its
+  guard order is the architectural guarantee: normalise → validate → require a selected chat →
+  require approval → only then report the missing integration. Even when Phase 04 adds an API
+  client, invalid or unapproved text cannot reach it, and a caller learns nothing about
+  submission by probing it.
 
-Approval manager and safety engine: the guard (`ensure_approved`) and the storage columns
-(`state`, `approved_at`, `submitted_at`) exist now; the full approval and safety engines are
-Phase 05 by design.
+Drafting, preview, and history belong to Phase 03; the full approval and safety engines belong
+to Phase 05. The storage columns that will carry approval (`state`, `approved_at`,
+`submitted_at`) already exist, so no schema change is needed to add them.
 
 ### Database — `src/flochat/database.py` (boundary + schema, implemented)
 
@@ -294,10 +300,14 @@ See [YouTube Integration Boundaries](#youtube-integration-boundaries).
 ### Shared errors — `src/flochat/errors.py` (implemented)
 
 A single catchable hierarchy, each error carrying an `AppState` so the CLI can print a status
-instead of a traceback: `ConfigurationError`, `PlatformError`, `StorageError`,
-`OrientationError`, `AuthenticationRequiredError`, `SessionExpiredError`,
-`PermissionRequiredError`, `ApprovalRequiredError`, `LiveChatUnavailableError`,
-`NetworkInterruption`, `NotSupportedYetError`.
+instead of a traceback: `FloChatError` (base), `ConfigurationError`, `PlatformError`
+(`unsupported_platform`), `StorageError`, `ApprovalRequiredError` (`pending`), and
+`NotSupportedYetError`.
+
+Every class here is raised by shipped code. Error classes for conditions that no Phase 01 code
+can produce (expired session, revoked permission, and so on) are deliberately **not** declared
+yet: their states exist in `AppState`, and Phase 04 adds the classes alongside the API code that
+raises them. This follows the Phase 01 rule against placeholder code.
 
 ---
 
@@ -361,9 +371,11 @@ documented constraints, not solved problems.
 ### Interruption and recovery rules
 
 * Reconnection **never** triggers a submission. `SessionManager.recover()` only reports state.
-* An interruption moves the session to `temporary_interruption` and keeps it paused until the
-  user acts.
-* Interruptions are recorded on the session (`interruptions`) so a later phase can present them.
+* `temporary_interruption` is a non-terminal state: the operation has stopped for now but may be
+  resumed by the user.
+* Phase 01 has no background event handling, so nothing records interruptions yet. The state
+  exists and is documented; Phase 06 adds the lifecycle hooks that raise it. No recorder was
+  written early purely to represent the idea.
 
 ### Honest limitation statement
 
@@ -532,7 +544,8 @@ These principles are binding for the whole project and are reflected in code, no
 * Submission cooldowns (`cooldown_seconds`, default 30, bounded 5–600; enforcement in Phase 05).
 * Comment validation (implemented locally in `comments.validate_comment`).
 * Preview before submission (the approved text is stored verbatim and re-usable for preview).
-* Explicit confirmation for every submission (`ensure_approved` raises unless approval is `True`).
+* Explicit confirmation for every submission (`submit()` runs `ensure_approved`, which accepts
+  only the literal `True`).
 * Clear submission status (`StatusReport` with a `confirmed` flag; success requires confirmation).
 * Error reporting through the shared state vocabulary.
 * Pause, stop, and disconnect controls (stop implemented; pause/disconnect arrive with sessions
@@ -630,7 +643,7 @@ condition.
 | --- | --- | --- |
 | `success` | Completed **and confirmed** | 0 |
 | `failure` | Operation failed; detail explains why | 1 |
-| `pending` | Awaiting explicit user approval | 1 |
+| `pending` | Waiting on user input or on a later phase | 1 |
 | `authentication_required` | Sign-in needed | 1 |
 | `permission_required` | OS or API permission needed | 3 |
 | `unsupported_platform` | Platform/terminal cannot do this | 3 |
@@ -794,19 +807,23 @@ shell).
 | 12 | Invalid config handling | `FLOCHAT_MODE=chaos flochat status` | **Pass** — `failure` state, message names the field and allowed values, exit code 2, no traceback |
 | 13 | Repository orientation | `python scripts/check_repository.py` | **Pass** — allow-listed top level, no extra Markdown, no placeholders, no empty folders |
 | 14 | Secret exposure | Same guard; patterns for Google access/refresh tokens, `GOCSPX-` client secrets, `AIza` API keys, private-key blocks across all text files | **Pass** — zero matches |
-| 15 | Boundary behaviour suite | 40 assertions executed in-process (see below) | **Pass** — 40/40 |
+| 15 | Boundary behaviour suite | 46 assertions executed in-process (see below) | **Pass** — 46/46 |
 | 16 | Fresh-clone build | `git clone` → `pip install -e .` → `ruff check .` → guard script | **Pass** — installs, lints, and passes the guard with no leftovers |
 | 17 | Git cleanliness | `git status --porcelain --ignored` review | **Pass** — only intended files tracked; `.venv`, caches, `*.egg-info`, local databases ignored |
+| 18 | Dead code | Guard script AST scan over 114 definitions | **Pass** — zero unreferenced definitions |
+| 19 | Guard is not vacuous | Injected an unused function, re-ran the guard, then reverted | **Pass** — guard failed as intended, then reported clean again |
+| 20 | Exit-code consistency | Compared `flochat state` output against the exit codes the CLI actually returns | **Pass** — one mapping table drives both |
 
 **Boundary behaviour suite (check 15).** Executed directly with the interpreter rather than
-through a test framework, because Phase 01 has no test directory. All 40 assertions passed:
+through a test framework, because Phase 01 has no test directory. All 46 assertions passed:
 
 * Confirmation rule: `StatusReport.of(SUCCESS)` is not `ok`; confirmed success is `ok`; all ten
-  states exist; terminal and user-action classifications are correct.
-* Comment safety: handles normalise and validate; zero-width characters are stripped; empty and
-  over-length comments are rejected while a 200-character comment is accepted; an unapproved
-  submission raises `ApprovalRequiredError`; `submit()` raises `NotSupportedYetError` naming
-  Phase 04.
+  states exist and each has a message; `pending` is never treated as success.
+* Comment safety: zero-width characters are stripped and whitespace collapsed; empty and
+  over-length comments are rejected while 200 characters is accepted; `submit()` blocks empty
+  text and a missing chat before it ever reaches the approval check; unapproved submissions raise
+  `ApprovalRequiredError`; truthy non-booleans (`1`, `"yes"`, `[1]`) are **not** accepted as
+  consent; even a fully valid, approved request raises `NotSupportedYetError` naming Phase 04.
 * Configuration: credential fields, relative paths, and unknown keys are each refused with a
   precise message; `FLOCHAT_HOME` relocates both the database and `config.json`.
 * Storage: schema version 1, `integrity: ok`, `comment_history` present with zero rows, and a
@@ -815,13 +832,45 @@ through a test framework, because Phase 01 has no test directory. All 40 asserti
   persistent start and recovery report `permission_required`; manual recovery reports `pending`
   and never resubmits.
 * Boundaries: OAuth reports not configured, the API client reports `pending`, live chat reports
-  `live_chat_unavailable`, and quota/authorization codes map to the intended states.
+  `live_chat_unavailable`, `requests_sent == 0`, every documented error code is classified,
+  quota maps to interruption, forbidden maps to permission, an unknown code maps to failure, and a
+  present token is reported as `configured`/`pending` rather than authorized.
 * Adapters: four adapters described, none claiming implementation or overlay capability, and the
   matching adapter is selected for this platform.
 
 Also verified during this phase: an uncreatable data directory yields a `StorageError` state
 instead of a traceback, and malformed JSON plus a credential field in `config.json` are each
 refused with a clear message and exit code 2.
+
+### Hardening pass (after the initial commit)
+
+The first commit was audited rather than assumed correct. An AST scan found **24 definitions
+referenced only at their own definition site** — placeholder code for planned features, which the
+Phase 01 rules forbid. All were removed or made genuinely reachable, and the rule is now enforced
+automatically:
+
+* **Removed as speculative:** `InterfaceKind`, `KNOWN_TERMINALS`, `PlatformInfo.has_terminal`,
+  `config_path`, `LOG_LEVELS`, `Session.interruptions`, `SessionManager.note_interruption`,
+  `AppState.is_terminal`, `AppState.needs_user_action`, `PlatformAdapter.ensure_available`,
+  `Database.utc_now`, plus five error classes that no shipped code could raise
+  (`AuthenticationRequiredError`, `SessionExpiredError`, `PermissionRequiredError`,
+  `NetworkInterruption`, `OrientationError`).
+* **Collapsed instead of stubbed:** `comments.prepare`, `is_valid_handle`, and `normalize_handle`
+  were folded into a single safe entry point, `submit(SubmissionRequest)`, whose guard order is
+  the guarantee. Handle validation was removed because the example comment is free text with a
+  handle in it, not a handle-only field — validating it as a bare handle would have rejected
+  valid input.
+* **Made reachable rather than deleted:** the YouTube boundaries are all exercised by `status`
+  (new `youtube` section, including `requests_sent: 0`), `ApiErrorBoundary.coverage()` classifies
+  every documented code at runtime so the table cannot rot, and the state vocabulary became
+  inspectable through the new `flochat state` command.
+* **Two real bugs found in this pass:** `errors.py` lost `NotSupportedYetError` during pruning
+  (caught by an import check, not by the linter — Ruff alone was not sufficient verification), and
+  the `state` table documented `permission_required` as exit 1 while the CLI returned 3. Both are
+  fixed; a single `state_exit_code()` mapping now drives the table, the reports, and the process
+  exit code.
+* **New guard check:** `_check_dead_code` fails the repository guard when any definition is
+  referenced only once, so this standard cannot silently regress in later phases.
 
 ### What was **not** verified (stated honestly)
 
@@ -862,17 +911,17 @@ purposes in [Repository File Inventory](#repository-file-inventory).
 | `README.md` | Replaced the placeholder; single central documentation and Phase 01 completion record |
 | `src/flochat/__init__.py` | Package identity, version, and Phase 01 scope note |
 | `src/flochat/state.py` | Ten application states, `StatusReport` with enforced confirmation |
-| `src/flochat/errors.py` | Error hierarchy mapped to application states |
+| `src/flochat/errors.py` | Error hierarchy mapped to application states (only errors that are raised) |
 | `src/flochat/platform.py` | Platform detection, capability reporting, data-directory resolution |
 | `src/flochat/adapters.py` | Adapter contract plus Android/Windows/Linux/macOS descriptors, all `implemented: False` |
 | `src/flochat/config.py` | Strict configuration loading/validation, logging setup, secret-field refusal |
 | `src/flochat/database.py` | SQLite boundary, schema version 1, integrity and health checks |
-| `src/flochat/comments.py` | Comment manager boundary, normalisation, validation, approval guard, refusing `submit()` |
+| `src/flochat/comments.py` | Comment safety boundary: normalisation, validation, approval guard, single refusing entry point |
 | `src/flochat/lifecycle.py` | Manual session lifecycle, persistent-mode honesty, interruption/recovery reporting |
 | `src/flochat/youtube.py` | OAuth, API client, live chat identification, and API error boundaries (no requests) |
 | `src/flochat/controller.py` | Application controller combining all boundaries into reports and lifecycle actions |
-| `src/flochat/cli.py` | `argparse` CLI, six commands, documented exit codes, JSON envelope |
-| `scripts/check_repository.py` | Repository orientation and credential guard (structure, placeholders, secrets, README coverage) |
+| `src/flochat/cli.py` | `argparse` CLI: 7 top-level commands, 8 invocable actions, single exit-code mapping, JSON envelope |
+| `scripts/check_repository.py` | Repository guard: structure, placeholders, secrets, dead code, README coverage, syntax |
 
 ### 4. Files modified
 
@@ -922,12 +971,20 @@ an explicit list of avoided visual clichés. No visual interface was built in Ph
 
 ### 9. Verification performed and actual results
 
-Seventeen checks executed, all passing, in a Linux x86_64 sandbox — see
+Twenty checks executed, all passing, in a Linux x86_64 sandbox — see
 [Verification Results](#verification-results) for the table and for the explicit list of things
-that were **not** verified. Summary: lint and formatting clean; every module parses; the package
-installs and runs; all six commands exercise successfully; the database schema is created and
-verified healthy; invalid configuration and persistent mode both fail honestly with the right
-exit codes; the repository guard reports no clutter and no credentials.
+that were **not** verified. Summary: lint and formatting clean; every module parses and imports;
+the package installs from a fresh clone and runs; all 8 command actions exercise successfully; the
+database schema is created and verified healthy; invalid configuration and persistent mode both
+fail honestly with the right exit codes; the repository guard reports no clutter, no credentials,
+and no dead code — and was proven capable of failing when a violation is injected.
+
+A post-commit hardening pass resolved all 24 dead definitions (removing the speculative ones and
+making the rest genuinely reachable), collapsed three stub-like comment
+helpers into one guarded entry point, wired every YouTube boundary into `status`, added the
+`flochat state` command, fixed two real defects found by auditing (a lost error class and an
+exit-code table that contradicted behaviour), and added an automated dead-code check to the
+guard. Details in [Verification Results](#verification-results).
 
 ### 10. Pending work
 

@@ -27,11 +27,19 @@ EXIT_FAILURE = 1
 EXIT_USAGE = 2
 EXIT_UNSUPPORTED = 3
 
+#: Single source of truth for how a state maps to a process exit code.
 _STATE_EXIT = {
     AppState.SUCCESS: EXIT_OK,
+    AppState.PENDING: EXIT_FAILURE,
+    AppState.PERMISSION_REQUIRED: EXIT_UNSUPPORTED,
     AppState.UNSUPPORTED_PLATFORM: EXIT_UNSUPPORTED,
     AppState.FAILURE: EXIT_FAILURE,
 }
+
+
+def state_exit_code(state: AppState) -> int:
+    """Exit code for a state. States not listed here fail closed."""
+    return _STATE_EXIT.get(state, EXIT_FAILURE)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -59,6 +67,7 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser("stop", help="Stop the current session cleanly.")
     subparsers.add_parser("status", help="Report the real state of every boundary.")
     subparsers.add_parser("platform", help="Show detected platform and adapter state.")
+    subparsers.add_parser("state", help="List the application states and their exit codes.")
 
     config = subparsers.add_parser("config", help="Inspect or validate configuration.")
     config_sub = config.add_subparsers(dest="config_command", metavar="action")
@@ -114,11 +123,23 @@ def _render_report(report: StatusReport, *, as_json: bool) -> None:
 
 
 def _exit_code(report: StatusReport) -> int:
-    if report.state is AppState.PENDING:
-        return EXIT_FAILURE
-    if report.state is AppState.PERMISSION_REQUIRED:
-        return EXIT_UNSUPPORTED
-    return _STATE_EXIT.get(report.state, EXIT_FAILURE)
+    return state_exit_code(report.state)
+
+
+def _state_table() -> dict[str, object]:
+    """The full state vocabulary with its user-facing meaning and exit code."""
+    return {
+        "states": [
+            {
+                "state": state.value,
+                "message": state.message,
+                "exit_code": state_exit_code(state),
+                "confirmed_when_success": state is AppState.SUCCESS,
+            }
+            for state in AppState
+        ],
+        "note": "Success requires confirmation. Failures are never silent.",
+    }
 
 
 def run(argv: Sequence[str] | None = None) -> int:
@@ -150,6 +171,9 @@ def run(argv: Sequence[str] | None = None) -> int:
             return EXIT_OK
         if args.command == "platform":
             _emit(controller.platform_report(), as_json=args.json)
+            return EXIT_OK
+        if args.command == "state":
+            _emit(_state_table(), as_json=args.json)
             return EXIT_OK
         if args.command == "config":
             if args.config_command == "validate":

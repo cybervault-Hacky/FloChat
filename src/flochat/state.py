@@ -26,24 +26,6 @@ class AppState(str, Enum):
     LIVE_CHAT_UNAVAILABLE = "live_chat_unavailable"
 
     @property
-    def is_terminal(self) -> bool:
-        """True when the state ends the current attempt without further progress.
-
-        PENDING and TEMPORARY_INTERRUPTION are non-terminal: the operation has
-        stopped for now but may be resumed by the user.
-        """
-        return self not in {AppState.PENDING, AppState.TEMPORARY_INTERRUPTION}
-
-    @property
-    def needs_user_action(self) -> bool:
-        """True when the state cannot clear without an explicit user response."""
-        return self in {
-            AppState.AUTHENTICATION_REQUIRED,
-            AppState.PERMISSION_REQUIRED,
-            AppState.UNSUPPORTED_PLATFORM,
-        }
-
-    @property
     def message(self) -> str:
         """Short user-facing text. Deliberately free of hyphens for readability."""
         return _MESSAGES[self]
@@ -55,7 +37,7 @@ class AppState(str, Enum):
 _MESSAGES: dict[AppState, str] = {
     AppState.SUCCESS: "Completed and confirmed.",
     AppState.FAILURE: "The operation failed. See the message for details.",
-    AppState.PENDING: "Waiting for your explicit approval.",
+    AppState.PENDING: "Waiting: this step needs your input or a later phase.",
     AppState.AUTHENTICATION_REQUIRED: "Sign in with your Google account to continue.",
     AppState.PERMISSION_REQUIRED: "FloChat needs an operating system permission to continue.",
     AppState.UNSUPPORTED_PLATFORM: "This platform or terminal is not supported for that operation.",

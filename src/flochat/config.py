@@ -23,7 +23,6 @@ from flochat.errors import ConfigurationError
 from flochat.platform import PlatformInfo, detect
 
 CONFIG_FILENAME = "config.json"
-LOG_LEVELS = ("debug", "info", "warning", "error")
 
 #: Keys whose presence in a configuration file indicates a credential leak.
 FORBIDDEN_SECRET_KEYS = frozenset(
@@ -86,10 +85,6 @@ class AppConfig(BaseModel):
             "max_comment_length": self.max_comment_length,
             "platform": info.label,
         }
-
-
-def config_path(platform: PlatformInfo | None = None) -> Path:
-    return (platform or detect()).default_data_dir() / CONFIG_FILENAME
 
 
 def _env_overrides() -> dict[str, Any]:

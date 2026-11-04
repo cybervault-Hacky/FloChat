@@ -17,7 +17,7 @@ Rules encoded here:
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Literal
@@ -46,7 +46,6 @@ class Session:
     state: SessionState = SessionState.IDLE
     started_at: str | None = None
     stopped_at: str | None = None
-    interruptions: list[str] = field(default_factory=list)
 
     @property
     def active(self) -> bool:
@@ -58,7 +57,6 @@ class Session:
             "state": self.state.value,
             "started_at": self.started_at,
             "stopped_at": self.stopped_at,
-            "interruptions": list(self.interruptions),
         }
 
 
@@ -132,15 +130,6 @@ class SessionManager:
                 "Session state is scoped to this terminal process; "
                 "Phase 01 has no background service.",
             ),
-        )
-
-    def note_interruption(self, reason: str) -> StatusReport:
-        """Record an interruption without pretending the session recovered."""
-        self._session.interruptions.append(reason)
-        return StatusReport(
-            state=AppState.TEMPORARY_INTERRUPTION,
-            detail=reason,
-            notes=("FloChat stays paused until you resume it.",),
         )
 
     def recover(self) -> StatusReport:
