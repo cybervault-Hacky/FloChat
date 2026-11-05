@@ -1,0 +1,56 @@
+# --- Secrets and credentials: never commit these ---
+.env
+.env.*
+!.env.example
+client_secret*.json
+token*.json
+*.pem
+*.p12
+*.pfx
+*.key
+credentials.json
+
+# --- FloChat local runtime state ---
+*.sqlite
+*.sqlite3
+*.db
+*.sqlite*-journal
+*.sqlite*-wal
+*.sqlite*-shm
+*.db-journal
+*.db-wal
+*.db-shm
+flochat-data/
+logs/
+*.log
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+venv/
+.venv*/
+.python-version
+
+# --- OS / editor noise ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Advisory safety reservation lock (no credentials).
+*.submission.lock
+
+# Ephemeral authenticated owner endpoint/capability and native build artifacts.
+*.panel.json
+*.sock
+.gradle/
+*.apk
+*.aab

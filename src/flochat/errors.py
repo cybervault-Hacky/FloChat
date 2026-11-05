@@ -1,0 +1,62 @@
+"""FloChat error hierarchy.
+
+All FloChat errors are catchable through :class:`FloChatError` and carry an
+:class:`~flochat.state.AppState` so the CLI and lifecycle layers can present a
+clear status instead of a traceback.
+"""
+
+from __future__ import annotations
+
+from flochat.state import AppState
+
+
+class FloChatError(Exception):
+    """Base class for expected FloChat failures."""
+
+    state: AppState = AppState.FAILURE
+
+    def __init__(self, message: str, *, hint: str = "") -> None:
+        super().__init__(message)
+        self.message = message
+        self.hint = hint
+
+    def __str__(self) -> str:
+        return f"{self.message} {self.hint}".strip()
+
+
+class ConfigurationError(FloChatError):
+    """Invalid or unusable configuration."""
+
+
+class PlatformError(FloChatError):
+    """The current platform or terminal cannot support the requested operation."""
+
+    state = AppState.UNSUPPORTED_PLATFORM
+
+
+class StorageError(FloChatError):
+    """The local database boundary could not complete an operation."""
+
+
+class ApprovalRequiredError(FloChatError):
+    """A submission was attempted without explicit user approval.
+
+    Bare boolean approval is not a bound safety approval; the foreground SafetyEngine owns consent.
+    """
+
+    state = AppState.PENDING
+
+    def __init__(
+        self, message: str = "Explicit approval is required for every submission."
+    ) -> None:
+        super().__init__(message, hint="Approve the prepared comment before it can be sent.")
+
+
+class NotSupportedYetError(FloChatError):
+    """An approved direction that a later phase will implement."""
+
+    def __init__(self, feature: str, phase: str) -> None:
+        super().__init__(
+            f"{feature} is not implemented yet.",
+            hint=f"Planned for {phase}. This build does not perform this operation.",
+        )
