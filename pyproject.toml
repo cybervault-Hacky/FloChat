@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=84.1.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "flochat"
+dynamic = ["version"]
+description = "FloChat - Your Live Chat, Always Within Reach."
+readme = "README.md"
+requires-python = ">=3.10"
+# Minimal runtime policy: argparse and SQLite are standard-library components.
+# Phase 04: official Google OAuth/refresh, bounded REST requests and OS keyring.
+dependencies = [
+    "pydantic>=2.6,<3",
+    "google-auth>=2.38,<3",
+    "google-auth-oauthlib>=1.2,<2",
+    "requests>=2.33.0,<3",
+    "keyring>=25.6,<26",
+]
+
+[project.optional-dependencies]
+dev = ["ruff>=0.6"]
+desktop = ["PySide6-Essentials>=6.8,<7"]
+
+[project.scripts]
+flochat = "flochat.cli:main"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.dynamic]
+version = {attr = "flochat.__version__"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+src = ["src"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["flochat"]
